@@ -1,13 +1,11 @@
+
 import React, { useState, useEffect, useContext, useReducer, createContext, useMemo, useRef } from "react";
 import "../assets/KanbanBoard.css";
 
 const KanbanContext = createContext();
 
 const initialState = {
-  todo: [ { id: "1", text: "Task A" }, 
-    { id: "2", text: "Task B" }, 
-    { id: "3", text: "Task C" }, 
-    { id: "4", text: "Task D" } ],
+  todo: [ { id: "1", text: "Task A" }, { id: "2", text: "Task B" }, { id: "3", text: "Task C" }, { id: "4", text: "Task D" } ],
   inProgress: [],
   done: []
 };
@@ -15,32 +13,38 @@ const initialState = {
 function kanbanReducer(state, action) {
   switch (action.type) {
     case "MOVE_CARD": {
-      const { card, from, to } = action.payload;
+      const { card, from, to, targetIndex } = action.payload;
+      let newTarget = [...state[to]].filter(c => c.id !== card.id);
+      if (typeof targetIndex === "number") {
+        newTarget.splice(targetIndex, 0, card);
+      } else {
+        newTarget.push(card);
+      }
       return {
         ...state,
-        [from]: state[from].filter((c) => c.id !== card.id),
-        [to]: [ ...state[to], card ]
+        [from]: state[from].filter(c => c.id !== card.id),
+        [to]: newTarget
       };
     }
     case "ADD_TASK": {
       const newTask = { id: Date.now().toString(), text: action.payload.text };
       return {
         ...state,
-        todo: [ ...state.todo, newTask ]
+        todo: [...state.todo, newTask]
       };
     }
     case "DELETE_CARD": {
       const { cardId, from } = action.payload;
       return {
         ...state,
-        [from]: state[from].filter((card) => card.id !== cardId)
+        [from]: state[from].filter(card => card.id !== cardId)
       };
     }
     case "EDIT_CARD": {
       const { cardId, from, newText } = action.payload;
       return {
         ...state,
-        [from]: state[from].map((card) => card.id === cardId ? { ...card, text: newText } : card )
+        [from]: state[from].map(card => card.id === cardId ? { ...card, text: newText } : card)
       };
     }
     default:
@@ -51,9 +55,7 @@ function kanbanReducer(state, action) {
 export function KanbanProvider({ children }) {
   const [state, dispatch] = useReducer(kanbanReducer, initialState);
   const value = useMemo(() => ({ state, dispatch }), [state]);
-  return (
-    <KanbanContext.Provider value={value}>{children}</KanbanContext.Provider>
-  );
+  return <KanbanContext.Provider value={value}>{children}</KanbanContext.Provider>;
 }
 
 function TaskInput() {
@@ -118,11 +120,25 @@ function Column({ title, columnKey, setModalData }) {
 
   useEffect(() => {
     const dropArea = dropRef.current;
+
     const handleDrop = (e) => {
       e.preventDefault();
       const data = JSON.parse(e.dataTransfer.getData("card"));
-      dispatch({ type: "MOVE_CARD", payload: { card: data.card, from: data.from, to: columnKey } });
+      const card = data.card;
+      const from = data.from;
+
+      const bounding = e.target.getBoundingClientRect();
+      const offset = e.clientY - bounding.top;
+      const children = [...dropArea.children].filter(el => el.classList.contains("card"));
+
+      let targetIndex = children.findIndex(child => {
+        const box = child.getBoundingClientRect();
+        return offset < box.top + box.height / 2 - bounding.top;
+      });
+
+      dispatch({ type: "MOVE_CARD", payload: { card, from, to: columnKey, targetIndex } });
     };
+
     dropArea.addEventListener("dragover", (e) => e.preventDefault());
     dropArea.addEventListener("drop", handleDrop);
     return () => dropArea.removeEventListener("drop", handleDrop);
@@ -191,8 +207,5 @@ function KanbanBoard() {
 }
 
 export default function KanbanBoardWrapper() {
-  return (
-    <KanbanProvider>
-      <KanbanBoard />
-    </KanbanProvider>);
+  return <KanbanProvider><KanbanBoard /></KanbanProvider>;
 }
